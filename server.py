@@ -4,9 +4,11 @@ from gevent.server import StreamServer
 
 from collections import namedtuple 
 from io import BytesIO
-from socket import error as socket_error 
+from socket import error as socket_error
 
-from .exception import Disconnected,CommandError
+from process_method_mixin import ProcessMethodMixin 
+
+from exception import Disconnected,CommandError
 
 Error = namedtuple('Error',('message'))
 
@@ -15,7 +17,7 @@ class ProtocolHandler(object):
     def __init__(self) -> None:
 
         self.handlers = {
-            '+': self.handle_sinple_string,
+            '+': self.handle_simple_string,
             '-':self.handle_error,
             ':': self.handle_integer,
             '$':self.handle_string,
@@ -94,10 +96,10 @@ class ProtocolHandler(object):
         else:
              raise CommandError('unrecognized type: %s' % type(data))
 
-class Server(object):
+class Server(ProcessMethodMixin):
     def __init__(self,
                  
-                host= '127.0.0.010',
+                host= '127.0.0.1',
                 port=31337,
                 max_clients = 64
                   ) -> None:
@@ -116,8 +118,10 @@ class Server(object):
               'SET': self.set,
               'DELETE': self.delete,
               'FLUSH': self.flush,
-              'MGET': self.
+              'MGET': self.mget,
+              'MSET':self.mset
          }
+    
 
     def connection_handler(self, conn,address):
             """ Convert 'conn'  a socket object to a file-object. """
@@ -136,7 +140,28 @@ class Server(object):
                 self.protocol.write_response(socket_file,resp)
 
     def get_response(self,data):
-            pass
+            if not isinstance(data,list):
+                try:
+                      data = data.split()
+                except:
+                     raise CommandError('Request must be list or simple string')
+            if not data:
+                 raise CommandError('Missing command')
+            
+            command = data[0].upper()
+
+            if command not in self._commands:
+                 raise CommandError('Unrecognized command: %s' % command)
+            
+            return self._commands[command](*data[:1])
+                
 
     def run(self):
-            self._server.serve_forever()
+            print(f" The server started successfully. Listening on port {self.server.address}")
+            self.server.serve_forever()
+
+
+if __name__ == '__main__':
+     from gevent import monkey; monkey.patch_all()
+     server = Server()
+     server.run()
